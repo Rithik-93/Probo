@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select"
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import Orderbook from './components/OrderBook';
 // import dotenv from 'dotenv';
 
 // dotenv.config();
@@ -22,19 +23,25 @@ type StockBalance = {
   };
 };
 
-type OrderbookEntry = {
-  total: number;
-  orders: { [userId: string]: number };
-};
+// type OrderbookEntry = {
+//   total: number;
+//   orders: { [userId: string]: number };
+// };
 
 type Orderbook = {
   [symbol: string]: {
-    yes: { [price: string]: OrderbookEntry };
-    no: { [price: string]: OrderbookEntry };
+    yes: { [price: string]: {
+      total: number;
+      orders: { [userId: string]: number };
+    } };
+    no: { [price: string]: {
+      total: number;
+      orders: { [userId: string]: number };
+    } };
   };
 };
 
-export default function TradingApp() {
+export default function App() {
   const [inrBalances, setInrBalances] = useState<{ [userId: string]: INRBalance }>({});
   const [stockBalances, setStockBalances] = useState<{ [userId: string]: StockBalance }>({});
   const [orderbook, setOrderbook] = useState<Orderbook>({});
@@ -129,7 +136,7 @@ export default function TradingApp() {
 
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-6">Trading App</h1>
+      <h1 className="text-3xl font-bold mb-6">Probo</h1>
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -155,7 +162,7 @@ export default function TradingApp() {
           <CardTitle>Orderbook</CardTitle>
         </CardHeader>
         <CardContent>
-          <pre className="text-sm overflow-auto max-h-60">{JSON.stringify(orderbook, null, 2)}</pre>
+          <Orderbook orderbook={orderbook}/>
         </CardContent>
       </Card>
 

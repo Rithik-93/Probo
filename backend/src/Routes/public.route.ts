@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 // import { INR_BALANCES, ORDERBOOK, STOCK_BALANCES } from '../server';
 
-import { INR_BALANCESType, ORDERBOOKType, STOCK_BALANCESType } from '../types';
+import { BIDSType, INR_BALANCESType, ORDERBOOKType, STOCK_BALANCESType } from '../types';
 
 const router = express.Router();
 
@@ -11,7 +11,7 @@ export let INR_BALANCES: INR_BALANCESType = {
         locked: 0
     },
     "user2": {
-        balance: 20,
+        balance: 20000000,
         locked: 20
     }
 };
@@ -49,28 +49,28 @@ export let ORDERBOOK: ORDERBOOKType | null = {
             }
         },
         "no": {
-            "9.0": {
+            "1.0": {
                 "total": 10,
                 orders: {
                     "user2": 5,
                     "user1": 5
                 }
             },
-            "8.0": {
+            "2.0": {
                 "total": 20,
                 orders: {
                     "user1": 10,
                     "user2": 10,
                 }
             },
-            "7.0": {
+            "3.0": {
                 "total": 5,
                 orders: {
                     "user1": 3,
                     "user2": 2
                 }
             },
-            "6.0": {
+            "4.0": {
                 "total": 6,
                 orders: {
                     "user1": 4,
@@ -80,6 +80,8 @@ export let ORDERBOOK: ORDERBOOKType | null = {
         }
     }
 };
+
+export let BIDS: BIDSType = {};
 
 export let STOCK_BALANCES: STOCK_BALANCESType = {
     "user1": {
@@ -124,7 +126,7 @@ router.get('/balances/inr', (req: Request, res: Response) => {
 
 router.get('/balances/stock', (req: Request, res: Response) => {
     res.json({
-        STOCK_BALANCES
+        BIDS
     })
     return
 });
@@ -146,73 +148,224 @@ interface OrderBuyRequestBody {
     stocktype: "yes" | "no";
 }
 
+// @ts-ignore
 router.post('/order/buy', async (req: Request<{}, {}, OrderBuyRequestBody>, res: Response) => {
     const { userId, stockSymbol, quantity, price, stocktype } = req.body;
     const totalCost = quantity * price;
 
     if (!INR_BALANCES[userId]) {
-        res.status(400).json({ msg: "User not found" });
-        return
+        return res.status(400).json({ msg: "User not found" });
     }
     if (stocktype !== "no" && stocktype !== "yes") {
-        res.json({ msg: "Please enter a valid stock type" });
-        return;
+        return res.status(400).json({ msg: "Please enter a valid stock type" });
     }
     if (ORDERBOOK === null) {
-        ORDERBOOK = {}
+        ORDERBOOK = {};
     }
     const userBalance = INR_BALANCES[userId].balance;
     if (totalCost > userBalance) {
-        res.status(400).json({ msg: "Not enough INR" });
-        return
+        return res.status(400).json({ msg: "Not enough INR" });
     }
     if (!ORDERBOOK[stockSymbol]) {
-        res.json({
-            msg: `${stockSymbol} unavailable in the Orderbook`
-        })
-        return
+        ORDERBOOK[stockSymbol] = { yes: {}, no: {} };
+    }
+
+    let remainingQuantity = quantity;
+    const oppositeStocktype = stocktype === "yes" ? "no" : "yes";
+
+    const updateStockBalance = (type: "yes" | "no", amount: number) => {
+        if (!STOCK_BALANCES[userId]) {
+            STOCK_BALANCES[userId] = {};
+        }
+        if (!STOCK_BALANCES[userId][stockSymbol]) {
+            STOCK_BALANCES[userId][stockSymbol] = { yes: { quantity: 0, locked: 0 }, no: { quantity: 0, locked: 0 } };
+        }
+        STOCK_BALANCES[userId][stockSymbol][type].quantity += amount;
     };
-    // const userStockType = ORDERBOOK[stockSymbol][userId]
 
-    if (!ORDERBOOK[stockSymbol][stocktype][price] || ORDERBOOK[stockSymbol][stocktype][price].total < quantity) {
-        res.json({
-            msg: `Not enough ${stocktype} stocks available`
-        })
-        return
-    }
-    //  if (stocktype === stockType.yes) {
-    //     if (!ORDERBOOK[stockSymbol].yes[price] || ORDERBOOK[stockSymbol].yes[price].total < quantity) {
-    //         res.json({
-    //             msg: `Not enough Yes stocks available `
-    //         })
-    //         return
-    //     }
-    if (!STOCK_BALANCES[userId][stockSymbol]) {
-        STOCK_BALANCES[userId][stockSymbol] = { yes: { quantity: 0, locked: 0 }, no: { quantity: 0, locked: 0 } };
+    if (BIDS[stockSymbol] && BIDS[stockSymbol][oppositeStocktype] && BIDS[stockSymbol][oppositeStocktype][price]) {
+        const oppositeBids = BIDS[stockSymbol][oppositeStocktype][price];
+        const oppositeUserId = Object.keys(oppositeBids)[0];
+        const oppositeQuantity = oppositeBids[oppositeUserId].quantity;
+
+        const nullifyQuantity = Math.min(remainingQuantity, oppositeQuantity);
+        remainingQuantity -= nullifyQuantity;
+        BIDS[stockSymbol][oppositeStocktype][price][oppositeUserId].quantity -= nullifyQuantity;
+
+        if (BIDS[stockSymbol][oppositeStocktype][price][oppositeUserId].quantity <= 0) {
+            delete BIDS[stockSymbol][oppositeStocktype][price][oppositeUserId];
+        }
+
+        if (Object.keys(BIDS[stockSymbol][oppositeStocktype][price]).length === 0) {
+            delete BIDS[stockSymbol][oppositeStocktype][price];
+        }
+
+        if (Object.keys(BIDS[stockSymbol][oppositeStocktype]).length === 0) {
+            delete BIDS[stockSymbol][oppositeStocktype];
+        }
+
+        if (Object.keys(BIDS[stockSymbol]).length === 0) {
+            delete BIDS[stockSymbol];
+        }
     }
 
-    ORDERBOOK[stockSymbol][stocktype][price].total -= quantity;
-    STOCK_BALANCES[userId][stockSymbol][stocktype].quantity += quantity;
+    if (remainingQuantity > 0) {
+        if (!BIDS[stockSymbol]) {
+            BIDS[stockSymbol] = {};
+        }
+        if (!BIDS[stockSymbol][stocktype]) {
+            BIDS[stockSymbol][stocktype] = {};
+        }
+        if (!BIDS[stockSymbol][stocktype][price]) {
+            BIDS[stockSymbol][stocktype][price] = {};
+        }
+        if (!BIDS[stockSymbol][stocktype][price][userId]) {
+            BIDS[stockSymbol][stocktype][price][userId] = { quantity: 0 };
+        }
+        BIDS[stockSymbol][stocktype][price][userId].quantity += remainingQuantity;
+
+        return res.json({
+            msg: "Order partially/fully added to BIDS",
+            remainingQuantity,
+            bids: BIDS[stockSymbol][stocktype][price][userId]
+        });
+    }
+    if (remainingQuantity === 0) {
+        updateStockBalance(stocktype, quantity); 
+    }
+
+    const executedCost = (quantity - remainingQuantity) * price;
     INR_BALANCES[userId].balance -= totalCost;
-    INR_BALANCES[userId].locked += totalCost;
-    if (!STOCK_BALANCES[userId]) {
-        STOCK_BALANCES[userId] = {};
-    }
-    res.json({ msg: "successful ig", stock: STOCK_BALANCES });
-    return
+    INR_BALANCES[userId].locked += executedCost;
+
+    return res.json({
+        msg: "Order processed successfully",
+        executedQuantity: quantity - remainingQuantity,
+        remainingQuantity,
+        stock: STOCK_BALANCES[userId][stockSymbol]
+    });
 });
+
+
+
 
 router.post('/order/sell', async (req: Request, res: Response) => {
     const { userId, stockSymbol, quantity, price, stocktype } = req.body;
     const parsedPrice = price.toString();
     try {
+
+
+
+
+
+
+
+
+
+
+        router.post('/order/buy', async (req: Request<{}, {}, OrderBuyRequestBody>, res: Response) => {
+            const { userId, stockSymbol, quantity, price, stocktype } = req.body;
+            const totalCost = quantity * price;
+        
+            if (!INR_BALANCES[userId]) {
+                res.status(400).json({ msg: "User not found" });
+                return;
+            }
+            if (stocktype !== "no" && stocktype !== "yes") {
+                res.json({ msg: "Please enter a valid stock type" });
+                return;
+            }
+            if (ORDERBOOK === null) {
+                ORDERBOOK = {};
+            }
+            const userBalance = INR_BALANCES[userId].balance;
+            if (totalCost > userBalance) {
+                res.status(400).json({ msg: "Not enough INR" });
+                return;
+            }
+            if (!ORDERBOOK[stockSymbol]) {
+                res.json({
+                    msg: `${stockSymbol} unavailable in the Orderbook`
+                });
+                return;
+            }
+        
+            const oppositeStocktype = stocktype === "yes" ? "no" : "yes";
+            let remainingQuantity = quantity;
+        
+            // Check if there's stock available for the opposite stocktype
+            if (ORDERBOOK[stockSymbol][oppositeStocktype] && ORDERBOOK[stockSymbol][oppositeStocktype][price]) {
+                const availableOppositeQuantity = ORDERBOOK[stockSymbol][oppositeStocktype][price].total;
+                if (availableOppositeQuantity > 0) {
+                    const quantityToExecute = Math.min(remainingQuantity, availableOppositeQuantity);
+                    ORDERBOOK[stockSymbol][oppositeStocktype][price].total -= quantityToExecute;
+                    remainingQuantity -= quantityToExecute;
+        
+                    // Update user's stock balance
+                    if (!STOCK_BALANCES[userId]) {
+                        STOCK_BALANCES[userId] = {};
+                    }
+                    if (!STOCK_BALANCES[userId][stockSymbol]) {
+                        STOCK_BALANCES[userId][stockSymbol] = { yes: { quantity: 0, locked: 0 }, no: { quantity: 0, locked: 0 } };
+                    }
+                    STOCK_BALANCES[userId][stockSymbol][stocktype].quantity += quantityToExecute;
+        
+                    // Update user's INR balance
+                    const executedCost = quantityToExecute * price;
+                    INR_BALANCES[userId].balance -= executedCost;
+                    INR_BALANCES[userId].locked += executedCost;
+                }
+            }
+        
+            // If there's remaining quantity, store it in BIDS
+            if (remainingQuantity > 0) {
+                if (!BIDS[stockSymbol]) {
+                    BIDS[stockSymbol] = {};
+                }
+                if (!BIDS[stockSymbol][stocktype]) {
+                    BIDS[stockSymbol][stocktype] = {};
+                }
+                if (!BIDS[stockSymbol][stocktype][price]) {
+                    BIDS[stockSymbol][stocktype][price] = {};
+                }
+                if (!BIDS[stockSymbol][stocktype][price][userId]) {
+                    BIDS[stockSymbol][stocktype][price][userId] = { quantity: 0 };
+                }
+                BIDS[stockSymbol][stocktype][price][userId].quantity += remainingQuantity;
+        
+                // Lock the remaining funds
+                const remainingCost = remainingQuantity * price;
+                INR_BALANCES[userId].balance -= remainingCost;
+                INR_BALANCES[userId].locked += remainingCost;
+            }
+        
+            res.json({ 
+                msg: "Order processed successfully", 
+                executedQuantity: quantity - remainingQuantity, 
+                remainingQuantity,
+                stock: STOCK_BALANCES[userId][stockSymbol]
+            });
+        });
+
+
+
+
+
+
+
+
+
+
+
+
+
         if (!INR_BALANCES[userId]) {
             res.status(400).json({ msg: "User not found" });
             return
         };
         if (!STOCK_BALANCES[userId][stockSymbol]) {
             res.json({
-                msg: `you don't have ${stockSymbol} stocks in your account`
+                msg: `Unable to find ${stockSymbol} stock in your account`
             })
             return
         };
@@ -230,7 +383,7 @@ router.post('/order/sell', async (req: Request, res: Response) => {
         if (stocktype === "yes") {
             if (STOCK_BALANCES[userId][stockSymbol].yes.quantity < quantity) {
                 res.json({
-                    msg: `you don't have ${stockSymbol} yes stocks in your account`
+                    msg: `insufficient ${stockSymbol} stocks of YES in your account`
                 })
                 return
             }

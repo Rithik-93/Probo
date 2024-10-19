@@ -1,15 +1,27 @@
-
-
 export interface INR_BALANCESType {
-    [key: string]: 
-    { 
-        balance: number, 
-        locked: number 
+    [key: string]:
+    {
+        balance: number,
+        locked: number
     }
 }
 
+
+export interface BIDSType {
+    [stockSymbol: string]: {
+        [stocktype: string]: {
+            [price: string]: {
+                [userId: string]: {
+                    quantity: number;
+                };
+            };
+        };
+    };
+}
+
+
 export interface ORDERBOOKType {
-    [currencyPair: string]: {
+    [stockSymbol: string]: {
         yes: {
             [price: string]: {
                 total: number;
