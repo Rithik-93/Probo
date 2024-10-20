@@ -126,6 +126,13 @@ router.get('/balances/inr', (req: Request, res: Response) => {
 
 router.get('/balances/stock', (req: Request, res: Response) => {
     res.json({
+        STOCK_BALANCES
+    })
+    return
+});
+
+router.get('/balances/bid', (req: Request, res: Response) => {
+    res.json({
         BIDS
     })
     return

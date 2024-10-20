@@ -6,10 +6,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import Orderbook from './components/OrderBook';
-// import dotenv from 'dotenv';
+import io from 'socket.io-client';
 
-// dotenv.config();
+
 const BACKEND = "http://localhost:3000";
+const socket = io(BACKEND);
 
 type INRBalance = {
   balance: number;
@@ -23,21 +24,32 @@ type StockBalance = {
   };
 };
 
-// type OrderbookEntry = {
-//   total: number;
-//   orders: { [userId: string]: number };
-// };
-
 type Orderbook = {
   [symbol: string]: {
-    yes: { [price: string]: {
-      total: number;
-      orders: { [userId: string]: number };
-    } };
-    no: { [price: string]: {
-      total: number;
-      orders: { [userId: string]: number };
-    } };
+    yes: {
+      [price: string]: {
+        total: number;
+        orders: { [userId: string]: number };
+      }
+    };
+    no: {
+      [price: string]: {
+        total: number;
+        orders: { [userId: string]: number };
+      }
+    };
+  };
+};
+
+type BIDS = {
+  [stockSymbol: string]: {
+    [stocktype: string]: {
+      [price: string]: {
+        [userId: string]: {
+          quantity: number;
+        };
+      };
+    };
   };
 };
 
@@ -45,92 +57,136 @@ export default function App() {
   const [inrBalances, setInrBalances] = useState<{ [userId: string]: INRBalance }>({});
   const [stockBalances, setStockBalances] = useState<{ [userId: string]: StockBalance }>({});
   const [orderbook, setOrderbook] = useState<Orderbook>({});
+  const [bids, setBids] = useState<{ [userId: string]: BIDS }>({});
   const [userId, setUserId] = useState('');
   const [stockSymbol, setStockSymbol] = useState('');
   const [quantity, setQuantity] = useState('');
   const [price, setPrice] = useState('');
   const [stockType, setStockType] = useState<"yes" | "no">("yes");
 
-  useEffect(() => {
-    fetchBalances();
-    fetchOrderbook();
-  }, []);
+
+
+  socket.on('orderbook_update', (updatedOrderbook) => {
+    setOrderbook(updatedOrderbook);
+  });
+
+  socket.on('balances_update', (updatedBalances) => {
+    setInrBalances(updatedBalances.inr);
+    setStockBalances(updatedBalances.stock);
+  });
+
+  socket.on('bids_update', (updatedBids) => {
+    setBids(updatedBids);
+  });
+
+
+
 
   const fetchBalances = useCallback(async () => {
     try {
       const inrResponse = await axios.get(`${BACKEND}/api/v1/balances/inr`);
-      // const inrData = await inrResponse.json();
-      // console.log('asd',inrResponse.data.INR_BALANCES);
       setInrBalances(inrResponse.data.INR_BALANCES);
 
       const stockResponse = await axios.get(`${BACKEND}/api/v1/balances/stock`);
-      // const stockData = await stockResponse.json();
       setStockBalances(stockResponse.data.STOCK_BALANCES);
-      // console.log(stockResponse.data)
     } catch (error) {
       console.error('Error fetching balances:', error);
+      toast.error('Failed to fetch balances');
     }
   }, []);
 
-  const fetchOrderbook = async () => {
+  const fetchOrderbook = useCallback(async () => {
     try {
       const response = await axios.get(`${BACKEND}/api/v1/balances/orderbook`);
-      // const data = await response.json();
-      // console.log(response);
       setOrderbook(response.data.ORDERBOOK);
     } catch (error) {
       console.error('Error fetching orderbook:', error);
+      toast.error('Failed to fetch orderbook');
     }
-  };
+  }, []);
+
+  const fetchBids = useCallback(async () => {
+    try {
+      const response = await axios.get(`${BACKEND}/api/v1/balances/bid`);
+      setBids(response.data.BIDS);
+    } catch (error) {
+      console.error('Error fetching bids:', error);
+      toast.error('Failed to fetch bids');
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBalances();
+    fetchOrderbook();
+    fetchBids();
+
+    socket.on('orderbook_update', (updatedOrderbook) => {
+      setOrderbook(updatedOrderbook);
+    });
+
+    socket.on('balances_update', (updatedBalances) => {
+      setInrBalances(updatedBalances.inr);
+      setStockBalances(updatedBalances.stock);
+    });
+
+    socket.on('bids_update', (updatedBids) => {
+      setBids(updatedBids);
+    });
+
+    return () => {
+      socket.off('orderbook_update');
+      socket.off('balances_update');
+      socket.off('bids_update');
+    };
+  }, [fetchBalances, fetchOrderbook, fetchBids]);
 
   const handleBuy = async () => {
     try {
-      const response = await axios.post(`${BACKEND}/api/v1/order/buy`, {
-          userId,
-          stockSymbol, 
-          quantity: Number(quantity), 
-          price: Number(price), 
-          stocktype: stockType 
+      await axios.post(`${BACKEND}/api/v1/order/buy`, {
+        userId,
+        stockSymbol,
+        quantity: Number(quantity),
+        price: Number(price),
+        stocktype: stockType
       });
-      // const data = await response.json();
-      console.log(response);
-      toast.success("SUCCESSPUL")
+      toast.success("Order placed successfully");
       fetchBalances();
       fetchOrderbook();
+      fetchBids();
     } catch (error) {
       console.error('Error placing buy order:', error);
+      toast.error('Failed to place buy order');
     }
   };
 
   const handleSell = async () => {
     try {
       await axios.post(`${BACKEND}/api/v1/order/sell`, {
-          userId, 
-          stockSymbol, 
-          quantity: Number(quantity), 
-          price: Number(price), 
-          stocktype: stockType
+        userId,
+        stockSymbol,
+        quantity: Number(quantity),
+        price: Number(price),
+        stocktype: stockType
       });
-      // const data = await response.json();
-      // alert(data.msg);
+      toast.success("Order placed successfully");
       fetchBalances();
       fetchOrderbook();
+      fetchBids();
     } catch (error) {
       console.error('Error in handleSell:', error);
-      alert('An error occurred while processing your sell order.');
+      toast.error('Failed to place sell order');
     }
   };
 
   const handleCreateSymbol = async () => {
     try {
       await axios.post(`${BACKEND}/api/v1/symbol/create/${stockSymbol}`);
-      // const data = await response.json();
-      // alert(response.data.msg);
-
-      // console.log(response)
+      toast.success("Symbol created successfully");
       fetchOrderbook();
+      fetchBids();
     } catch (error) {
       console.error('Error creating symbol:', error);
+      toast.error('Failed to create symbol');
     }
   };
 
@@ -162,7 +218,16 @@ export default function App() {
           <CardTitle>Orderbook</CardTitle>
         </CardHeader>
         <CardContent>
-          <Orderbook orderbook={orderbook}/>
+          <Orderbook orderbook={orderbook} />
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Bids</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <pre className="text-sm overflow-auto max-h-60">{JSON.stringify(bids, null, 2)}</pre>
         </CardContent>
       </Card>
 
