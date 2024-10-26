@@ -158,7 +158,21 @@ interface OrderBuyRequestBody {
 // @ts-ignore
 router.post('/order/buy', async (req: Request<{}, {}, OrderBuyRequestBody>, res: Response) => {
     const { userId, stockSymbol, quantity, price, stocktype } = req.body;
+
+    
     const totalCost = quantity * price;
+
+
+    if (ORDERBOOK === null) {
+        ORDERBOOK = {};
+    }
+    console.log(ORDERBOOK[stockSymbol])
+    // if (ORDERBOOK[stockSymbol]) {
+    //     res.json({
+    //         msg : `${stockSymbol} not available in the orderbook`
+    //     })
+    //     return
+    // }
 
     if (!INR_BALANCES[userId]) {
         return res.status(400).json({ msg: "User not found" });
@@ -166,9 +180,7 @@ router.post('/order/buy', async (req: Request<{}, {}, OrderBuyRequestBody>, res:
     if (stocktype !== "no" && stocktype !== "yes") {
         return res.status(400).json({ msg: "Please enter a valid stock type" });
     }
-    if (ORDERBOOK === null) {
-        ORDERBOOK = {};
-    }
+    
     const userBalance = INR_BALANCES[userId].balance;
     if (totalCost > userBalance) {
         return res.status(400).json({ msg: "Not enough INR" });

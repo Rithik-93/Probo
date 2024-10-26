@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Button } from "./components/ui/button"
-import { Input } from "./components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select"
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import Orderbook from './components/OrderBook';
 import io from 'socket.io-client';
-
 
 const BACKEND = "http://localhost:3000";
 const socket = io(BACKEND);
@@ -30,13 +29,13 @@ type Orderbook = {
       [price: string]: {
         total: number;
         orders: { [userId: string]: number };
-      }
+      };
     };
     no: {
       [price: string]: {
         total: number;
         orders: { [userId: string]: number };
-      }
+      };
     };
   };
 };
@@ -63,24 +62,6 @@ export default function App() {
   const [quantity, setQuantity] = useState('');
   const [price, setPrice] = useState('');
   const [stockType, setStockType] = useState<"yes" | "no">("yes");
-
-
-
-  socket.on('orderbook_update', (updatedOrderbook) => {
-    setOrderbook(updatedOrderbook);
-  });
-
-  socket.on('balances_update', (updatedBalances) => {
-    setInrBalances(updatedBalances.inr);
-    setStockBalances(updatedBalances.stock);
-  });
-
-  socket.on('bids_update', (updatedBids) => {
-    setBids(updatedBids);
-  });
-
-
-
 
   const fetchBalances = useCallback(async () => {
     try {
@@ -120,6 +101,7 @@ export default function App() {
     fetchOrderbook();
     fetchBids();
 
+    // WebSocket listeners for real-time updates
     socket.on('orderbook_update', (updatedOrderbook) => {
       setOrderbook(updatedOrderbook);
     });
@@ -133,11 +115,12 @@ export default function App() {
       setBids(updatedBids);
     });
 
-    return () => {
-      socket.off('orderbook_update');
-      socket.off('balances_update');
-      socket.off('bids_update');
-    };
+    // return () => {
+    //   // Cleanup listeners when component unmounts
+    //   socket.off('orderbook_update');
+    //   socket.off('balances_update');
+    //   socket.off('bids_update');
+    // };
   }, [fetchBalances, fetchOrderbook, fetchBids]);
 
   const handleBuy = async () => {
@@ -149,10 +132,13 @@ export default function App() {
         price: Number(price),
         stocktype: stockType
       });
-      toast.success("Order placed successfully");
+      toast.success("Buy order placed successfully");
+
+      // Fetch latest data and emit updates
       fetchBalances();
       fetchOrderbook();
       fetchBids();
+      socket.emit('orderbook_update', orderbook); // Notify via WebSocket
     } catch (error) {
       console.error('Error placing buy order:', error);
       toast.error('Failed to place buy order');
@@ -168,12 +154,15 @@ export default function App() {
         price: Number(price),
         stocktype: stockType
       });
-      toast.success("Order placed successfully");
+      toast.success("Sell order placed successfully");
+
+      // Fetch latest data and emit updates
       fetchBalances();
       fetchOrderbook();
       fetchBids();
+      socket.emit('orderbook_update', orderbook); // Notify via WebSocket
     } catch (error) {
-      console.error('Error in handleSell:', error);
+      console.error('Error placing sell order:', error);
       toast.error('Failed to place sell order');
     }
   };
@@ -182,8 +171,11 @@ export default function App() {
     try {
       await axios.post(`${BACKEND}/api/v1/symbol/create/${stockSymbol}`);
       toast.success("Symbol created successfully");
+
+      // Fetch latest data and emit updates
       fetchOrderbook();
       fetchBids();
+      socket.emit('orderbook_update', orderbook); // Notify via WebSocket
     } catch (error) {
       console.error('Error creating symbol:', error);
       toast.error('Failed to create symbol');
